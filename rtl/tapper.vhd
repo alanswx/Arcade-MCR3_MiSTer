@@ -187,6 +187,7 @@ port(
  dl_wr            : in std_logic;
 
  mod_dotron : in  std_logic;
+ mod_demoderb : in  std_logic;
 
  dbg_cpu_addr : out std_logic_vector(15 downto 0)
  );
@@ -988,7 +989,7 @@ dl_cg_graphics_we <= '0';
 -- background graphics ROM 6F
 --bg_graphics_1 : entity work.tapper_bg_bits_1
 
-bg_code_line_addr <= '0' & bg_code_line(12 downto 0)  when mod_dotron = '1' else bg_code_line;
+bg_code_line_addr <= '0' & bg_code_line(12 downto 0)  when (mod_dotron = '1' or mod_demoderb = '1') else bg_code_line;
 
 bg_graphics_1 : entity work.dpram
 generic map(

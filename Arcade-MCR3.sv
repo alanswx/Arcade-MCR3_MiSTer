@@ -478,6 +478,7 @@ Tapper Tapper
 	.sp_graphx32_do ( sp_do ),
 
 	.mod_dotron(mod_dotron),
+	.mod_demoderb(mod_demoderb),
 
 	.dl_addr      ( dl_addr    ),
 	.dl_wr        ( ioctl_wr && !ioctl_index),
