@@ -1,0 +1,29 @@
+<misterromdescription>
+	<name>Discs of Tron</name>
+	<mameversion>0216</mameversion>
+	<mratimestamp>201912310000</mratimestamp>
+	<year>1983</year>
+	<manufacturer>Bally Midway</manufacturer>
+	<category>Action</category>
+	<rbf>tapper</rbf>
+	<rom index="0" zip="dotron.zip" amd5="7300967c61a0f1b887c12f3989e500bb" type="merged|nonmerged">
+		<part crc="" name="loc-pg0.1c"/>
+		<part crc="" name="loc-pg1.2c"/>
+		<part crc="" name="loc-pg2.3c"/>
+		<part crc="" name="loc-pg1.4c"/>
+		<part crc="" name="sound0.a7"/>
+		<part crc="" name="sound1.a8"/>
+		<part crc="" name="sound2.a9"/>
+		<part crc="" name="sound3.a10"/>
+		<part crc="" name="loc-g.cp4"/>
+		<part crc="" name="loc-h.cp3"/>
+		<part crc="" name="loc-e.cp6"/>
+		<part crc="" name="loc-f.cp5"/>
+		<part crc="" name="loc-c.cp8"/>
+		<part crc="" name="loc-d.cp7"/>
+		<part crc="" name="loc-a.cp0"/>
+		<part crc="" name="loc-b.cp9"/>
+		<part crc="" name="loc-bg2.6f"/>
+		<part crc="" name="loc-bg1.5f"/>
+	</rom>
+</misterromdescription>
