@@ -242,6 +242,11 @@ wire [24:0] sp_ioctl_addr = mod_timber ? sp_ioctl_addr_timber : mod_demoderb ? s
 //wire [24:0] dl_addr = ioctl_addr - 18'h2e000; // background + char grfx offset
 wire [24:0] dl_addr = ioctl_addr - 18'h32000; // background + char grfx offset
 
+
+wire [23:1] port2_a  = mod_dotron ? {sp_ioctl_addr[13:0], sp_ioctl_addr[15]} :{sp_ioctl_addr[18:17], sp_ioctl_addr[14:0], sp_ioctl_addr[16]};
+wire [1:0]  port2_ds = mod_dotron ?  {sp_ioctl_addr[14], ~sp_ioctl_addr[14]} : {sp_ioctl_addr[15], ~sp_ioctl_addr[15]};
+
+
 reg port1_req, port2_req;
 sdram sdram
 (
@@ -260,11 +265,6 @@ sdram sdram
 
 	.cpu1_addr     ( ioctl_download ? 16'hffff : {1'b0, rom_addr[15:1]} ),
 	.cpu1_q        ( rom_do ),
-	// need higher priority for CSD
-	//.cpu2_addr     ( ioctl_download ? 16'hffff : (16'h8000 + csd_addr[14:1]) ),
-	//.cpu2_q        ( csd_do ),
-	//.cpu3_addr     ( ioctl_download ? 16'hffff : (16'h7000 + snd_addr[12:1]) ),
-	//.cpu3_q        ( snd_do ),
 	.cpu2_addr     ( ioctl_download ? 16'hffff : (16'h7000 + snd_addr[13:1]) ),
 	.cpu2_q        ( snd_do ),
 	
@@ -272,12 +272,13 @@ sdram sdram
 	// port2 for sprite graphics
 	.port2_req     ( port2_req ),
 	.port2_ack     ( ),
-//	.port2_a       ( {sp_ioctl_addr[14:0], sp_ioctl_addr[16]} ), // merge sprite roms to 32-bit wide words
-	.port2_a       ( {sp_ioctl_addr[18:17], sp_ioctl_addr[14:0], sp_ioctl_addr[16]} ), // merge sprite roms to 32-bit wide words
-	.port2_ds      ( {sp_ioctl_addr[15], ~sp_ioctl_addr[15]} ),
+	.port2_a       ( port2_a), // merge sprite roms to 32-bit wide words
+	.port2_ds      ( port2_ds),
 	.port2_we      ( ioctl_download ),
 	.port2_d       ( {ioctl_dout, ioctl_dout} ),
 	.port2_q       ( ),
+
+
 
 	.sp_addr       ( ioctl_download ? 15'h7fff : sp_addr ),
 	.sp_q          ( sp_do )
