@@ -243,8 +243,16 @@ wire [24:0] sp_ioctl_addr = mod_timber ? sp_ioctl_addr_timber : mod_demoderb ? s
 wire [24:0] dl_addr = ioctl_addr - 18'h32000; // background + char grfx offset
 
 
-wire [23:1] port2_a  = mod_dotron ? {sp_ioctl_addr[13:0], sp_ioctl_addr[15]} :{sp_ioctl_addr[18:17], sp_ioctl_addr[14:0], sp_ioctl_addr[16]};
-wire [1:0]  port2_ds = mod_dotron ?  {sp_ioctl_addr[14], ~sp_ioctl_addr[14]} : {sp_ioctl_addr[15], ~sp_ioctl_addr[15]};
+wire [23:1] port2_a_dotron = {sp_ioctl_addr[13:0], sp_ioctl_addr[15]};
+wire [23:1] port2_a_tapper = {sp_ioctl_addr[18:17], sp_ioctl_addr[14:0], sp_ioctl_addr[16]};
+wire [23:1] port2_a_demoderb= {sp_ioctl_addr[14:0], sp_ioctl_addr[16]};
+
+wire [1:0] port2_ds_dotron  =  {sp_ioctl_addr[14], ~sp_ioctl_addr[14]};
+wire [1:0] port2_ds_tapper = {sp_ioctl_addr[15], ~sp_ioctl_addr[15]} ;
+
+
+wire [23:1] port2_a  = mod_demoderb? port2_a_demoderb : mod_dotron ? port2_a_dotron : port2_a_tapper;
+wire [23:1] port2_ds  = mod_dotron ? port2_ds_dotron : port2_ds_tapper;
 
 
 reg port1_req, port2_req;
