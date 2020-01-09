@@ -186,6 +186,8 @@ port(
  dl_data          : in std_logic_vector( 7 downto 0);
  dl_wr            : in std_logic;
 
+ mod_dotron : in  std_logic;
+
  dbg_cpu_addr : out std_logic_vector(15 downto 0)
  );
 end tapper;
@@ -258,6 +260,7 @@ architecture struct of tapper is
  signal bg_attr         : std_logic_vector(7 downto 0);
 
  signal bg_code_line    : std_logic_vector(13 downto 0);
+ signal bg_code_line_addr    : std_logic_vector(13 downto 0);
  signal bg_graphx1_do   : std_logic_vector( 7 downto 0);
  signal bg_graphx2_do   : std_logic_vector( 7 downto 0);
  signal bg_palette_addr : std_logic_vector( 5 downto 0);
@@ -299,6 +302,8 @@ architecture struct of tapper is
  signal sp_graphx_b_ok  : std_logic;
  
  signal sp_buffer_ram1_addr : std_logic_vector(7 downto 0);
+ signal sp_buffer_ram1_addr_tapper : std_logic_vector(7 downto 0);
+ signal sp_buffer_ram1_addr_dotron : std_logic_vector(7 downto 0);
  signal sp_buffer_ram1a_we  : std_logic;
  signal sp_buffer_ram1b_we  : std_logic;
  signal sp_buffer_ram1a_di  : std_logic_vector( 7 downto 0);
@@ -308,6 +313,8 @@ architecture struct of tapper is
  signal sp_buffer_ram1_do_r : std_logic_vector(15 downto 0);
  
  signal sp_buffer_ram2_addr : std_logic_vector(7 downto 0);
+ signal sp_buffer_ram2_addr_tapper : std_logic_vector(7 downto 0);
+ signal sp_buffer_ram2_addr_dotron : std_logic_vector(7 downto 0);
  signal sp_buffer_ram2a_we  : std_logic;
  signal sp_buffer_ram2b_we  : std_logic;
  signal sp_buffer_ram2a_di  : std_logic_vector( 7 downto 0);
@@ -321,6 +328,8 @@ architecture struct of tapper is
  signal sp_vid              : std_logic_vector(3 downto 0);
  signal sp_col              : std_logic_vector(3 downto 0);
  signal sp_palette_addr     : std_logic_vector(5 downto 0);
+ signal sp_palette_addr_dotron     : std_logic_vector(5 downto 0);
+ signal sp_palette_addr_tapper     : std_logic_vector(5 downto 0);
  
  signal palette_addr        : std_logic_vector(5 downto 0);
  signal palette_we          : std_logic;
@@ -556,8 +565,9 @@ ssio_iowe <= '1' when cpu_wr_n = '0' and cpu_ioreq_n = '0' else '0';
 --------- sprite machine ---------
 ----  91464 Super Video Board ----
 ----------------------------------
+hflip <= not(hcnt) when mod_dotron = '1' else hcnt;
 --hflip <= not(hcnt);  -- apply mirror horizontal flip
-hflip <= hcnt;       -- do not apply mirror horizontal flip
+--hflip <= hcnt;       -- do not apply mirror horizontal flip
 
 vflip <= vcnt(8 downto 0) & not top_frame when tv15Khz_mode = '1' else vcnt; -- do not apply mirror flip
 
@@ -660,16 +670,25 @@ sp_graphx_b <= sp_graphx_do(3 downto 0) when sp_hflip(0) = '1' else sp_graphx_do
 
 sp_graphx_a_ok <= '1' when sp_graphx_a /= x"0" else '0';
 sp_graphx_b_ok <= '1' when sp_graphx_b /= x"0" else '0';
-								
+
+
+		sp_buffer_ram1_addr <= sp_buffer_ram1_addr_dotron  when mod_dotron = '1' else sp_buffer_ram1_addr_tapper;
+		sp_buffer_ram2_addr <= sp_buffer_ram2_addr_dotron  when mod_dotron = '1' else sp_buffer_ram2_addr_tapper;
+
+sp_buffer_ram1_addr_tapper <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '1' else hflip(8 downto 1) - x"04";
+sp_buffer_ram1_addr_dotron <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '1' else hflip(8 downto 1) + x"0C";
+sp_buffer_ram2_addr_tapper <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '0' else hflip(8 downto 1) - x"04";
+sp_buffer_ram2_addr_dotron <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '0' else hflip(8 downto 1) + x"0C";
+
 sp_buffer_ram1a_di  <= sp_attr(3 downto 0) & sp_graphx_a                when sp_buffer_sel = '1' else x"00";
 sp_buffer_ram1b_di  <= sp_attr(3 downto 0) & sp_graphx_b                when sp_buffer_sel = '1' else x"00";
-sp_buffer_ram1_addr <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '1' else hflip(8 downto 1) - x"04";
+--sp_buffer_ram1_addr <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '1' else hflip(8 downto 1) - x"04";
 sp_buffer_ram1a_we  <= not sp_hcnt(0) and sp_on_line and sp_graphx_a_ok when sp_buffer_sel = '1' else hcnt(0);
 sp_buffer_ram1b_we  <= not sp_hcnt(0) and sp_on_line and sp_graphx_b_ok when sp_buffer_sel = '1' else hcnt(0);
 
 sp_buffer_ram2a_di  <= sp_attr(3 downto 0) & sp_graphx_a                when sp_buffer_sel = '0' else x"00";
 sp_buffer_ram2b_di  <= sp_attr(3 downto 0) & sp_graphx_b                when sp_buffer_sel = '0' else x"00";
-sp_buffer_ram2_addr <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '0' else hflip(8 downto 1) - x"04";
+--sp_buffer_ram2_addr <= sp_hcnt(8 downto 1)                              when sp_buffer_sel = '0' else hflip(8 downto 1) - x"04";
 sp_buffer_ram2a_we  <= not sp_hcnt(0) and sp_on_line and sp_graphx_a_ok when sp_buffer_sel = '0' else hcnt(0);
 sp_buffer_ram2b_we  <= not sp_hcnt(0) and sp_on_line and sp_graphx_b_ok when sp_buffer_sel = '0' else hcnt(0);
 
@@ -718,8 +737,14 @@ begin
 					when others => bg_palette_addr <= bg_attr(5 downto 4) & bg_graphx2_do(1 downto 0) & bg_graphx1_do(1 downto 0);
 				end case;
 			end if;
-			
-			sp_palette_addr <= not sp_col(1 downto 0) & sp_vid;
+		        if mod_dotron = '1' then
+				sp_palette_addr <= sp_col(1 downto 0) & sp_vid;
+			else
+				sp_palette_addr <= not sp_col(1 downto 0) & sp_vid;
+			end if;	
+			--sp_palette_addr <= sp_palette_addr_dotron when mod_dotron = '1' else sp_palette_addr_tapper;
+			--sp_palette_addr_tapper <= not sp_col(1 downto 0) & sp_vid;
+			--sp_palette_addr_dotron <= sp_col(1 downto 0) & sp_vid;
 		
 		end if;
 
@@ -962,6 +987,9 @@ dl_cg_graphics_we <= '0';
 
 -- background graphics ROM 6F
 --bg_graphics_1 : entity work.tapper_bg_bits_1
+
+bg_code_line_addr <= '0' & bg_code_line(12 downto 0)  when mod_dotron = '1' else bg_code_line;
+
 bg_graphics_1 : entity work.dpram
 generic map(
 	aWidth => 14,
@@ -969,7 +997,7 @@ generic map(
 )
 port map(
  clk_a  => clock_vidn,
- addr_a => bg_code_line,
+ addr_a => bg_code_line_addr,
  q_a    => bg_graphx2_do,
  clk_b  => clock_vid,
  addr_b => dl_addr(13 downto 0),
@@ -988,7 +1016,7 @@ generic map(
 )
 port map(
  clk_a  => clock_vidn,
- addr_a => bg_code_line,
+ addr_a => bg_code_line_addr,
  q_a    => bg_graphx1_do,
  clk_b  => clock_vid,
  addr_b => dl_addr(13 downto 0),

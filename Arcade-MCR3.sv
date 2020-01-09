@@ -112,7 +112,7 @@ assign HDMI_ARY = status[1] ? 8'd9  : status[2] ? 8'd20 : 8'd21;
 
 `include "build_id.v" 
 localparam CONF_STR = {
-	"A.TAPPER;;",
+	"A.MCR3;;",
 	"H0O1,Aspect Ratio,Original,Wide;",
 	//"H0O2,Orientation,Vert,Horz;",
 	"O35,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
@@ -158,6 +158,8 @@ wire        ioctl_download;
 wire        ioctl_wr;
 wire [24:0] ioctl_addr;
 wire  [7:0] ioctl_dout;
+wire  [7:0] ioctl_index;
+
 
 wire [10:0] ps2_key;
 
@@ -185,12 +187,32 @@ hps_io #(.STRLEN($size(CONF_STR)>>3)) hps_io
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
+        .ioctl_index(ioctl_index),
+
 
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
 	.joystick_analog_0(joy_a),
 	.ps2_key(ps2_key)
 );
+
+
+reg mod_tapper   = 0;
+reg mod_timber   = 0;
+reg mod_dotron   = 0;
+reg mod_demoderb = 0;
+
+always @(posedge clk_sys) begin
+        reg [7:0] mod = 0;
+        if (ioctl_wr & (ioctl_index==1)) mod <= ioctl_dout;
+
+        mod_tapper	<= (mod == 0);
+        mod_timber	<= (mod == 1);
+        mod_dotron	<= (mod == 2);
+        mod_demoderb	<= (mod == 3);
+end
+
+
 
 wire [15:0] rom_addr;
 wire [15:0] rom_do;
@@ -212,7 +234,11 @@ wire [31:0] sp_do;
 //                             {ioctl_addr[24:16], ioctl_addr[15], ioctl_addr[13:0], ioctl_addr[14]}; // 16 bit ROM
 
 //wire [24:0] sp_ioctl_addr = ioctl_addr - 17'h18000;
-wire [24:0] sp_ioctl_addr = ioctl_addr - 17'h12000; //SP ROM offset: 0x12000
+//tapper
+wire [24:0] sp_ioctl_addr_demoderb = ioctl_addr - 17'h14000;
+wire [24:0] sp_ioctl_addr_tapper = ioctl_addr - 17'h12000; //SP ROM offset: 0x12000
+wire [24:0] sp_ioctl_addr_timber = ioctl_addr - 17'h11000; //SP ROM offset: 0x11000
+wire [24:0] sp_ioctl_addr = mod_timber ? sp_ioctl_addr_timber : mod_demoderb ? sp_ioctl_addr_demoderb : sp_ioctl_addr_tapper;
 //wire [24:0] dl_addr = ioctl_addr - 18'h2e000; // background + char grfx offset
 wire [24:0] dl_addr = ioctl_addr - 18'h32000; // background + char grfx offset
 
@@ -261,9 +287,9 @@ sdram sdram
 always @(posedge clk_sys) begin
 	reg        ioctl_wr_last = 0;
 
-	ioctl_wr_last <= ioctl_wr;
+	ioctl_wr_last <= (ioctl_wr && !ioctl_index);
 	if (ioctl_download) begin
-		if (~ioctl_wr_last && ioctl_wr) begin
+		if (~ioctl_wr_last && ioctl_wr && !ioctl_index) begin
 			port1_req <= ~port1_req;
 			port2_req <= ~port2_req;
 		end
@@ -441,8 +467,11 @@ Tapper Tapper
 	//.bg_rom_do    ( bg_do ),
 	.sp_addr      ( sp_addr ),
 	.sp_graphx32_do ( sp_do ),
+
+	.mod_dotron(mod_dotron),
+
 	.dl_addr      ( dl_addr    ),
-	.dl_wr        ( ioctl_wr   ),
+	.dl_wr        ( ioctl_wr && !ioctl_index),
 	.dl_data      ( ioctl_dout )
 );
 

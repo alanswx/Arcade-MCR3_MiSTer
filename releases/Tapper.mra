@@ -5,7 +5,10 @@
 	<year>1983</year>
 	<manufacturer>Bally Midway</manufacturer>
 	<category>Action</category>
-	<rbf>tapper</rbf>
+	<rbf>mcr3</rbf>
+        <rom index="1">
+                <part>0</part>
+        </rom>
 	<rom index="0" zip="tapper.zip" md5="7300967c61a0f1b887c12f3989e500bb" type="merged|nonmerged">
 		<part name="tapper_c.p.u._pg_0_1c_1-27-84.1c"/>
 		<part name="tapper_c.p.u._pg_1_2c_1-27-84.2c"/>
