@@ -207,6 +207,7 @@ localparam CONF_STR = {
 	"O35,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"D3OD,Deinterlacer Hi-Res,Off,On;",
 	"O6,Audio,Mono,Stereo;",
+	"O7,Flip Screen,Off,On;",
 	"-;",
 	"DIP;",
 	"-;",
@@ -543,6 +544,7 @@ arcade_video #(512,9) arcade_video
 wire no_rotate = status[2] | direct_video | landscape;
 wire rotate_ccw = 0;
 wire flip       = 0;
+wire core_flip  = status[7];
 
 assign {FB_PAL_CLK, FB_FORCE_BLANK, FB_PAL_ADDR, FB_PAL_DOUT, FB_PAL_WR} = '0;
 ddram ddram (.*, .s_wr(0),.s_din(0),.s_be(0));
@@ -563,7 +565,8 @@ mcr3 mcr3
 	.video_hblank(hblank),
 	.video_hs(hs),
 	.video_vs(vs),
-	.video_hflip(mod_dotron),
+	.video_hflip(mod_dotron ^ core_flip),
+	.video_vflip(core_flip),
 	.tv15Khz_mode(~hires),
 	.separate_audio(status[6]),
 	.audio_out_l(audio_l),

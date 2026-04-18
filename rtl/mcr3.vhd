@@ -145,6 +145,7 @@ port(
  video_vs       : out std_logic;
  video_ce       : out std_logic;
  video_hflip    : in  std_logic;
+ video_vflip    : in  std_logic;
  
  separate_audio : in  std_logic;
  audio_out_l    : out std_logic_vector(15 downto 0);
@@ -188,6 +189,7 @@ architecture struct of mcr3 is
  signal hflip   : std_logic_vector(9 downto 0) := (others=>'0'); -- horizontal counter flip
  signal vcnt    : std_logic_vector(9 downto 0) := (others=>'0'); -- vertical counter
  signal vflip   : std_logic_vector(9 downto 0) := (others=>'0'); -- vertical counter flip
+ signal vflip_base : std_logic_vector(9 downto 0) := (others=>'0');
  
  signal hs_cnt, vs_cnt :std_logic_vector(9 downto 0) ;
  signal hsync0, hsync1, hsync2, hsync3, hsync4 : std_logic;
@@ -504,7 +506,8 @@ ssio_iowe <= '1' when cpu_wr_n = '0' and cpu_ioreq_n = '0' else '0';
 ----  91464 Super Video Board ----
 ----------------------------------
 hflip <= hcnt when video_hflip = '0' else not hcnt;
-vflip <= vcnt(8 downto 0) & not top_frame when tv15Khz_mode = '1' else vcnt; -- do not apply mirror flip
+vflip <= vflip_base when video_vflip = '0' else "0111011111" - vflip_base;
+vflip_base <= vcnt(8 downto 0) & not top_frame when tv15Khz_mode = '1' else vcnt;
 
 sp_buffer_sel <= vflip(1) when tv15Khz_mode = '1' else vflip(0);
 
@@ -661,7 +664,7 @@ begin
 				end if;
 			end if;
 			
-			sp_palette_addr <= ((not sp_col(1 downto 0)) xor (video_hflip & video_hflip)) & sp_vid;
+			sp_palette_addr <= (not sp_col(1 downto 0)) & sp_vid;
 		
 		end if;
 
