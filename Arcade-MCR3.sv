@@ -190,7 +190,11 @@ assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
 assign USER_OUT  = '1;
-assign LED_USER  = ioctl_download;
+// On dotrone the user LED doubles as the Squawk & Talk activity probe: it
+// lights for ~0.17 s whenever the game issues a new non-zero sound command on
+// OP4. That answers "is the game actually talking to the speech board?" from
+// across the bench, without a SignalTap build. Unchanged for every other set.
+assign LED_USER  = ioctl_download | (mod_dotrone_any & snt_active);
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 
@@ -208,6 +212,7 @@ localparam CONF_STR = {
 	"D3OD,Deinterlacer Hi-Res,Off,On;",
 	"O6,Audio,Mono,Stereo;",
 	"O7,Flip Screen,Off,On;",
+	"O8,S&T Probe,Off,On;",
 	"-;",
 	"DIP;",
 	"-;",
@@ -251,6 +256,7 @@ wire        ioctl_wait;
 
 wire [31:0] joy1, joy2;
 wire [31:0] joy = joy1 | joy2;
+wire [10:0] ps2_key;
 wire  [8:0] sp1, sp2; 
 
 wire [21:0] gamma_bus;
@@ -262,7 +268,7 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({|status[5:3],landscape,mod_dotron,direct_video}),
+	.status_menumask({|status[5:3],landscape,mod_dotron_any,direct_video}),
 	.forced_scandoubler(forced_scandoubler),
    .video_rotated(video_rotated),
 	.gamma_bus(gamma_bus),
@@ -280,9 +286,44 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.joystick_0(joy1),
 	.joystick_1(joy2),
 
+	.ps2_key(ps2_key),
+
 	.spinner_0(sp1),
 	.spinner_1(sp2)
 );
+
+// ---------------------------------------------------------------------------
+// RAW PS/2 KEYBOARD DECODE for coin and start.
+//
+// Why this exists: coin/start normally arrive as joy[12]/joy[10]/joy[11], i.e.
+// through MiSTer's JOYSTICK MAPPING layer. Driving that layer remotely (mrext's
+// POST /api/controls/keyboard-raw/{code}, or a hand-rolled uinput keyboard)
+// proved unreliable -- CREDITS stayed 0 while every call returned 200. ps2_key
+// is a different path: hps_io hands the core raw scancodes regardless of any
+// joystick mapping, which is how the computer cores get typing. Decoding here
+// routes around the layer that was failing.
+//
+// The keys are the SAME ones a cabinet keyboard uses (5 = coin, 1/2 = start),
+// and these are OR'd with the joystick bits, so nothing changes for a human at
+// the bench -- pressing 5 simply now works through both paths.
+//
+// ps2_key = { toggle, pressed, extended, code[7:0] }; bit 10 flips on every
+// event, so compare it against its previous value rather than edge-detecting
+// `pressed`.
+// ---------------------------------------------------------------------------
+reg kbd_coin1 = 0, kbd_start1 = 0, kbd_start2 = 0;
+always @(posedge clk_sys) begin
+	reg old_state;
+	old_state <= ps2_key[10];
+	if (old_state != ps2_key[10]) begin
+		case (ps2_key[7:0])
+			8'h2E: kbd_coin1  <= ps2_key[9];   // '5'
+			8'h16: kbd_start1 <= ps2_key[9];   // '1'
+			8'h1E: kbd_start2 <= ps2_key[9];   // '2'
+			default: ;
+		endcase
+	end
+end
 
 wire rom_download = ioctl_download && !ioctl_index;
 
@@ -298,6 +339,12 @@ wire [31:0] sp_do;
 // 0E000 - 11FFF - Super Sound board ROM (8 bit)
 // 12000 - 31FFF - Sprite ROMs (32 bit)
 // 32000 - 39FFF - BG ROMS
+// 3A000 - 3DFFF - Squawk & Talk board ROM (8 bit, dotrone only) -- 16 KB
+//                 mapping 1:1 onto the 6802's $8000-$BFFF window. The first
+//                 4 KB is the unpopulated U2 socket and the MRA zero-fills it,
+//                 so pre.u3/u4/u5 land at $9000/$A000/$B000 as in MAME.
+//                 Absent from every other set's MRA, which simply stop at
+//                 0x39FFF.
 
 //wire [24:0] rom_ioctl_addr = ~ioctl_addr[16] ? ioctl_addr : // 8 bit ROMs
 //                             {ioctl_addr[24:16], ioctl_addr[15], ioctl_addr[13:0], ioctl_addr[14]}; // 16 bit ROM
@@ -353,6 +400,48 @@ dpram #(8,16) cpu_rom
 	.q_b(rom_do)
 );
 
+// Squawk & Talk board ROM, 0x3A000-0x3DFFF. Only dotrone's MRA supplies it;
+// for every other set this RAM simply stays blank and the board is inert.
+//
+// 0x3A000 is NOT 16 KB aligned, so the region base must be SUBTRACTED rather
+// than masked off -- same pattern as sp_ioctl_addr and dl_addr above. Masking
+// with ioctl_addr[13:0] would rotate the ROM by 0x2000 inside the RAM, which
+// puts the reset vector in the wrong place and is invisible until the 6802
+// exists to fetch it.
+wire [24:0] snt_ioctl_addr = ioctl_addr - 25'h3A000;
+wire        snt_rom_we = ioctl_wr && rom_download
+                         && (ioctl_addr >= 25'h3A000) && (ioctl_addr < 25'h3E000);
+wire [13:0] snt_rom_addr;
+wire  [7:0] snt_rom_do;
+
+// Definitive check of the S&T download AND the MRA layout: capture the two
+// bytes the 6802 will fetch as its RESET vector ($BFFE/$BFFF, which is
+// download offset 0x3DFFE/0x3DFFF) and compare against the value read straight
+// out of pre.u5 offline: $F983.
+//
+// `rom_nonzero` in the probe does NOT establish this -- the vector fetch alone
+// sets that bit even if every byte is at the wrong offset. If the MRA's
+// <part repeat="4096"> zero-fill were dropped, everything would shift 4 KB and
+// this check is what catches it.
+reg [7:0] snt_vec_hi = 0, snt_vec_lo = 0;
+always @(posedge clk_sys) begin
+	if (ioctl_wr && rom_download && ioctl_addr == 25'h3DFFE) snt_vec_hi <= ioctl_dout;
+	if (ioctl_wr && rom_download && ioctl_addr == 25'h3DFFF) snt_vec_lo <= ioctl_dout;
+end
+wire snt_rom_ok = (snt_vec_hi == 8'hF9) && (snt_vec_lo == 8'h83);
+
+dpram #(8,14) snt_rom
+(
+	.clk_a(clk_sys),
+	.we_a(snt_rom_we),
+	.addr_a(snt_ioctl_addr[13:0]),
+	.d_a(ioctl_dout),
+
+	.clk_b(clk_sys),
+	.addr_b(snt_rom_addr),
+	.q_b(snt_rom_do)
+);
+
 // ROM download controller
 always @(posedge clk_sys) begin
 	if (rom_download) begin
@@ -383,9 +472,12 @@ wire service = sw[1][0];
 
 // Generic controls - make a module from this?
 
-wire m_start1  = joy[10];
-wire m_start2  = joy[11];
-wire m_coin1   = joy[12] | (mod_dotron & (joy[10] | joy[11]));
+// ...| kbd_* : the raw PS/2 decode above, so coin/start also work when the
+// joystick mapping layer is not delivering (see the decoder's comment).
+wire m_start1  = joy[10] | kbd_start1;
+wire m_start2  = joy[11] | kbd_start2;
+wire m_coin1   = joy[12] | kbd_coin1
+               | (mod_dotron_any & (joy[10] | joy[11] | kbd_start1 | kbd_start2));
 
 wire m_right1  = joy1[0];
 wire m_left1   = joy1[1];
@@ -451,6 +543,8 @@ reg mod_tapper = 0;
 reg mod_timber = 0;
 reg mod_dotron = 0;
 reg mod_journey= 0;
+reg mod_dotrone= 0;
+reg mod_dotrone_up = 0;
 always @(posedge clk_sys) begin
 	reg [7:0] mod = 0;
 	if (ioctl_wr & (ioctl_index==1)) mod <= ioctl_dout;
@@ -459,7 +553,21 @@ always @(posedge clk_sys) begin
 	mod_timber <= ( mod == 1 );
 	mod_dotron <= ( mod == 2 );
 	mod_journey<= ( mod == 3 );
+	mod_dotrone<= ( mod == 4 );	// Discs of Tron (Environmental) - adds Squawk & Talk
+	// mod 5 is a BRING-UP CONTROL, not a real machine: the Environmental ROM
+	// set with the cabinet strap forced to Upright. It exists so the "is the
+	// game talking to the speech board?" probe can be falsified -- run mod 4
+	// and mod 5 back to back, and the probe must light for one and stay dark
+	// for the other. Without that, a lit probe only proves the probe is lit.
+	mod_dotrone_up <= ( mod == 5 );
 end
+
+// Both Discs of Tron cabinets share video orientation, coin wiring and the
+// control panel. They differ ONLY in the IP2 bit 7 cabinet strap (below), the
+// CPU/SSIO ROM revision, and the presence of the Squawk & Talk speech board.
+wire mod_dotron_any = mod_dotron | mod_dotrone | mod_dotrone_up;
+// Everything that follows the Environmental ROM set, strap aside.
+wire mod_dotrone_any = mod_dotrone | mod_dotrone_up;
 
 // load the DIPS
 reg [7:0] sw[8];
@@ -487,10 +595,15 @@ always @(*) begin
 		input_1 = ~{ 2'b00, m_fire1a, m_fire1b, m_up1, m_down1, m_left1, m_right1 };
 		input_2 = ~{ 2'b00, m_fire2a, m_fire2b, m_up2, m_down2, m_left2, m_right2 };
 	end
-	else if (mod_dotron) begin
+	else if (mod_dotron_any) begin
 		input_0 = ~{ service, 2'b00, m_fire_a, m_start2, m_start1, 1'b0, m_coin1 };
 		input_1 = ~{ 1'b0, spin_tron[7:1] };
-		input_2 = ~{ 1'b0, m_fire_b, m_fire_c, m_fire_d, m_down, m_up, m_right, m_left };
+		// IP2 bit 7 is the CABINET strap, and it is not cosmetic: the game reads
+		// it to decide whether it is an Environmental cabinet. Active low, so
+		// 0 = Environmental, 1 = Upright (MAME dotron/dotrone INPUT_PORTS,
+		// PORT_DIPNAME Cabinet). Get this wrong on dotrone and the Environmental
+		// ROMs run in upright mode - it boots and plays, but never speaks.
+		input_2 = ~{ mod_dotrone, m_fire_b, m_fire_c, m_fire_d, m_down, m_up, m_right, m_left };
 	end
 	else if (mod_journey) begin
 		landscape = 0;
@@ -527,12 +640,63 @@ always @(posedge clk_80M) begin
 	ce_pix <= hires ? !div[1:0] : !div;
 end
 
+// Squawk & Talk bring-up probe (status[8], "S&T Probe" in the OSD).
+//
+// `snt_seen` is STICKY: set the first time the game issues a non-zero sound
+// command on OP4, and held until reset. Sticky rather than a pulse so that a
+// SINGLE screenshot answers "is the game talking to the speech board?" -- an
+// LED or a 0.17 s flash needs eyes on the bench and lucky timing, whereas this
+// survives to whenever the screenshot happens to be taken.
+//
+// It also confirms the Environmental cabinet strap indirectly: an upright
+// dotron issues no S&T commands at all, so a lit probe means IP2 bit 7 was
+// read as Environmental.
+//
+// Default ON (option reads On,Off so the power-on status of 0 enables it):
+// this core has no saved config on the bench machine, so a default-off probe
+// would need OSD fiddling over a remote link to be any use.
+//
+// It tints ONLY pixels that are already black, so the backdrop goes dark blue
+// while every sprite, tile and glyph stays exactly as it was. A full-screen
+// tint would answer the question but destroy the ability to see the game at
+// the same time -- and this needs no pixel counters either way.
+// Three INDEPENDENT sticky facts encoded as the backdrop colour, so one
+// screenshot separates "the game never asked" from "the board never answered".
+// Only already-black pixels are touched, so the game stays fully visible.
+//
+//   RED   = snt_cpu_run     : 6802 address bus has changed 255 times (running)
+//   GREEN = snt_dac_written : 6802 has written the AD558 (executing board code)
+//   BLUE  = snt_seen        : game has strobed OP4 bit 4 twice (commanding us)
+//
+// So: black = nothing at all; red = CPU runs but idle; yellow = CPU running
+// board code with no host traffic; white = everything working.
+// Probe now defaults OFF: the full chain reads GREEN=7 / RED=7, so it has
+// done its job and a tinted backdrop just gets in the way of playing.
+// Turn it back on from the OSD ("S&T Probe") if a regression needs chasing.
+wire snt_probe = status[8] & mod_dotrone_any;   // default OFF; OSD toggles
+wire snt_black = ~|{r, g, b};
+wire [2:0] probe_r = (snt_probe & snt_black) ? snt_cpu_run : r;
+// GREEN is a 3-BIT PROGRESS CODE rendered as intensity, not a flag:
+//   1 = 6802 read PIA2   2 = it was interrupted   4 = it drove TMS /WS
+// so 0=nothing, 3=interrupted+servicing, 7=full chain. Distinct green
+// levels (0/36/73/109/146/182/219/255 after 3->8 bit expansion) are easy
+// to read back out of a screenshot.
+wire [2:0] probe_g = (snt_probe & snt_black) ? snt_progress : g;
+// BLUE is a 3-bit code as well now:
+//   bit0 host has strobed OP4 bit 4
+//   bit1 the downloaded RESET vector is exactly $F983 (ROM layout is correct)
+//   bit2 the CPU has addressed 0080-009F under a LOOSE decode that ignores the
+//        mirror mask entirely. If bit2 lights while GREEN bit0 stays dark, my
+//        0xB090 mirror mask is wrong -- that separates "decode bug" from
+//        "the CPU never goes there" in one reading.
+wire [2:0] probe_b = (snt_probe & snt_black) ? {snt_pia_loose, snt_tms_nz, snt_seen} : b;  // bit1 now = TMS produced audio
+
 arcade_video #(512,9) arcade_video
 (
 	.*,
 	.ce_pix(ce_pix),
 	.clk_video(clk_80M),
-	.RGB_in({r,g,b}),
+	.RGB_in({probe_r,probe_g,probe_b}),
 	.HBlank(hblank),
 	.VBlank(vblank),
 	.HSync(hs),
@@ -550,9 +714,58 @@ assign {FB_PAL_CLK, FB_FORCE_BLANK, FB_PAL_ADDR, FB_PAL_DOUT, FB_PAL_WR} = '0;
 ddram ddram (.*, .s_wr(0),.s_din(0),.s_be(0));
 
 wire [15:0] audio_l, audio_r;
+
+// Squawk & Talk speech board (dotrone only). Step-2 shell: snt_audio is hard 0,
+// so the sums below are no-ops and every other set is bit-identical to before.
+//
+// NOTE for step 5: the core's audio is UNSIGNED (AUDIO_S is only asserted for
+// Journey, whose wave player is signed), whereas the TMS5200 output is SIGNED
+// and the AD558 DAC is unsigned. Settle on one convention inside
+// squawk_n_talk before widening this sum, and revisit AUDIO_S for dotrone.
+wire signed [15:0] snt_audio;
+wire        snt_active, snt_seen, snt_dac_written;
+wire  [2:0] snt_cpu_run;
+wire        snt_pia_loose, snt_tms_nz;
+wire  [2:0] snt_progress;
+
+squawk_n_talk squawk_n_talk
+(
+	.clk(clk_sys),
+	.reset(reset),
+	.sound_select(output_4[3:0]),
+	.sound_int(output_4[4]),
+	.dbg_in2(input_2),
+	.dbg_op4(output_4),
+	.rom_addr(snt_rom_addr),
+	.rom_do(snt_rom_do),
+	.audio_out(snt_audio),
+	.active(snt_active),
+	.seen(snt_seen),
+	.cpu_run(snt_cpu_run),
+	.progress(snt_progress),
+	.pia_loose(snt_pia_loose),
+	.tms_audio_nz(snt_tms_nz),
+	.dac_written(snt_dac_written),
+	.dbg_dac(),
+	.dbg_cpu_addr(),
+	.dbg_tms_wsn(),
+	.dbg_tms_rsn()
+);
+
+// The core's audio is UNSIGNED (AUDIO_S is only asserted for Journey) while
+// the S&T board's is a SIGNED swing about zero, so this is an unsigned base
+// plus a signed offset, clamped at BOTH ends - underflow to 0, overflow to
+// full scale. Clamping only the top would wrap loud negative excursions round
+// to full volume, which is exactly the sort of thing that sounds like a broken
+// speech core rather than a broken mixer.
+wire signed [17:0] snt_mix_l = $signed({2'b00, audio_l}) + $signed({{2{snt_audio[15]}}, snt_audio});
+wire signed [17:0] snt_mix_r = $signed({2'b00, audio_r}) + $signed({{2{snt_audio[15]}}, snt_audio});
+wire [15:0] snt_aud_l = snt_mix_l[17] ? 16'h0000 : (snt_mix_l[16] ? 16'hffff : snt_mix_l[15:0]);
+wire [15:0] snt_aud_r = snt_mix_r[17] ? 16'h0000 : (snt_mix_r[16] ? 16'hffff : snt_mix_r[15:0]);
+
 assign AUDIO_S = mod_journey;
-assign AUDIO_L = mod_journey ? j_aud_l : audio_l;
-assign AUDIO_R = mod_journey ? j_aud_r : audio_r;
+assign AUDIO_L = mod_journey ? j_aud_l : (mod_dotrone_any ? snt_aud_l : audio_l);
+assign AUDIO_R = mod_journey ? j_aud_r : (mod_dotrone_any ? snt_aud_r : audio_r);
 
 mcr3 mcr3
 (
@@ -565,7 +778,7 @@ mcr3 mcr3
 	.video_hblank(hblank),
 	.video_hs(hs),
 	.video_vs(vs),
-	.video_hflip(mod_dotron ^ core_flip),
+	.video_hflip(mod_dotron_any ^ core_flip),
 	.video_vflip(core_flip),
 	.tv15Khz_mode(~hires),
 	.separate_audio(status[6]),

@@ -1,0 +1,103 @@
+<misterromdescription>
+	<name>Discs of Tron (Environmental)</name>
+	<region></region>
+	<homebrew>no</homebrew>
+	<bootleg>no</bootleg>
+	<version></version>
+	<alternative></alternative>
+	<platform>Midway MCR3</platform>
+	<series>Tron</series>
+	<year>1983</year>
+	<manufacturer>Bally</manufacturer>
+	<manufacturer>Midway</manufacturer>
+	<category>Sports</category>
+
+	<setname>dotrone</setname>
+	<parent>dotron</parent>
+	<mameversion>0218</mameversion>
+	<!-- Deliberately NOT <rbf>mcr3</rbf>. MiSTer matches the rbf tag against
+	     _Arcade/cores/<name>_<date>.rbf, so shipping this work as MCR3_<newer
+	     date>.rbf would silently become the core for Tapper/Timber/Journey and
+	     the upright Discs of Tron as well. A distinct name keeps the
+	     work-in-progress speech core isolated to this MRA until it is done. -->
+	<rbf>mcr3snt</rbf>
+	<about>Environmental (sit-down) cabinet. Unlike the upright, this PCB carries
+	a Bally Squawk &amp; Talk speech board (MC6802 + 2x PIA6821 + TMS5200 + AD558).
+	Part names follow the MERGED dotron.zip layout (clone ROMs under a dotrone/
+	prefix, shared gfx at the root), matching the same era as the upright MRA
+	alongside it. CRCs are MAME-verified.</about>
+
+	<resolution>15kHz</resolution>
+	<rotation>horizontal</rotation>
+	<flip></flip>
+
+	<players>1</players>
+	<joystick>8-way</joystick>
+	<special_controls></special_controls>
+	<num_buttons>4</num_buttons>
+	<buttons default="A,B,X,Y,R,L,Start,Select" names="Toss,Deflect,Aim Up,Aim Down,Rotate Right,Rotate Left,Start1+Coin,Start2+Coin"></buttons>
+
+	<switches default="FF,00">
+		<dip bits="0" ids="2,1" name="Coin Meters"></dip>
+		<dip bits="8" ids="Off,On" name="Service"></dip>
+		</switches>
+
+	<!-- mod byte: 4 = Discs of Tron (Environmental). 2 is the upright. -->
+	<rom index="1">
+		<part>04</part>
+		</rom>
+	<rom index="0" zip="dotron.zip" md5="none">
+		<!-- 00000-0DFFF  main CPU (56K) -->
+		<part crc="eee31b8c" name="dotrone/loc-cpu1"></part>
+		<part crc="75ba6ad3" name="dotrone/loc-cpu2"></part>
+		<part crc="94bb1a0e" name="dotrone/loc-cpu3"></part>
+		<part crc="c137383c" name="dotrone/loc-cpu4"></part>
+		<!-- 0E000-11FFF  SSIO sound board (16K). Named loc-a..loc-d in the
+		     merged zip; current MAME calls these
+		     ssi_o_loc-X_disc_of_tron_aug_19. Same bytes, same CRCs. -->
+		<part crc="2de6a8a8" name="dotrone/loc-a"></part>
+		<part crc="4097663e" name="dotrone/loc-b"></part>
+		<part crc="f576b9e7" name="dotrone/loc-c"></part>
+		<part crc="74b0059e" name="dotrone/loc-d"></part>
+		<!-- 12000-31FFF  sprites (128K). The set is only 64K, so each pair is
+		     repeated to fill all four 32K bitplane slots - same as the
+		     upright MRA. -->
+		<part crc="57a2b1ff" name="loc-g.cp4"></part>
+		<part crc="3bb4d475" name="loc-h.cp3"></part>
+		<part crc="57a2b1ff" name="loc-g.cp4"></part>
+		<part crc="3bb4d475" name="loc-h.cp3"></part>
+		<part crc="ce957f1a" name="loc-e.cp6"></part>
+		<part crc="d26053ce" name="loc-f.cp5"></part>
+		<part crc="ce957f1a" name="loc-e.cp6"></part>
+		<part crc="d26053ce" name="loc-f.cp5"></part>
+		<part crc="ef45d146" name="loc-c.cp8"></part>
+		<part crc="5e8a3ef3" name="loc-d.cp7"></part>
+		<part crc="ef45d146" name="loc-c.cp8"></part>
+		<part crc="5e8a3ef3" name="loc-d.cp7"></part>
+		<part crc="b35f5374" name="loc-a.cp0"></part>
+		<part crc="565a5c48" name="loc-b.cp9"></part>
+		<part crc="b35f5374" name="loc-a.cp0"></part>
+		<part crc="565a5c48" name="loc-b.cp9"></part>
+		<!-- 32000-39FFF  background (32K), likewise doubled -->
+		<part crc="40167124" name="loc-bg2.6f"></part>
+		<part crc="40167124" name="loc-bg2.6f"></part>
+		<part crc="bb2d7a5d" name="loc-bg1.5f"></part>
+		<part crc="bb2d7a5d" name="loc-bg1.5f"></part>
+		<!-- 3A000-3DFFF  Squawk & Talk ROM, 16K mapping 1:1 onto the 6802's
+		     $8000-$BFFF. U2 ($8000) is an unpopulated socket on dotrone, so
+		     it is zero-filled; pre.u3/u4/u5 then land at $9000/$A000/$B000
+		     exactly as MAME loads them. The $C000-$FFFF mirror of this window
+		     is what supplies the 6802 reset vector out of pre.u5. -->
+		<part repeat="4096">00</part>
+		<part crc="c3d0f762" name="dotrone/pre.u3"></part>
+		<part crc="7ca79b43" name="dotrone/pre.u4"></part>
+		<part crc="24e9618e" name="dotrone/pre.u5"></part>
+		</rom>
+	<rom index="2"></rom>
+	<rom index="3"></rom>
+	<rom index="4"></rom>
+
+	<nvram index="4" size="2048"></nvram>
+
+	<remark></remark>
+</misterromdescription>

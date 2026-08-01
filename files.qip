@@ -9,6 +9,30 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/spinner.sv
 set_global_assignment -name VHDL_FILE rtl/YM2149_linmix_sep.vhd
 set_global_assignment -name VHDL_FILE rtl/mcr_sound_board.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/wave_sound.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/squawk_n_talk.sv
+set_global_assignment -name VHDL_FILE rtl/pia6821.vhd
+# jt680x (JTCORES, GPL-3.0) used as an MC6802. SEARCH_PATH is required: the
+# modules `include 6801.vh / 6801_param.vh and $readmemb("6801.uc"), all of
+# which sit next to them rather than at the project root.
+set_global_assignment -name SEARCH_PATH rtl/jt680x
+set_global_assignment -name VERILOG_FILE rtl/jt680x/jt680x.v
+set_global_assignment -name VERILOG_FILE rtl/jt680x/jt680x_ctrl.v
+set_global_assignment -name VERILOG_FILE rtl/jt680x/jt680x_alu.v
+set_global_assignment -name VERILOG_FILE rtl/jt680x/jt680x_regs.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
 set_global_assignment -name VHDL_FILE rtl/mcr3.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE Arcade-MCR3.sv
+
+# TMS5200 (zeldin/Mega99, LGPL-3.0). VERILOG_FILE, never SystemVerilog:
+# tms5200_vsp has a port named `int`, a SystemVerilog keyword.
+# SEARCH_PATH is required for the two $readmemh coefficient tables.
+set_global_assignment -name SEARCH_PATH rtl/tms5200
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_vsp.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_dac.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_fifo.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_crom.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_prom.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_bstack.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_kstack.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_multiplier.v
+set_global_assignment -name VERILOG_FILE rtl/tms5200/tms5200_pram.v
