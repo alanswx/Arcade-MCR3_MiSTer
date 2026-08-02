@@ -1234,6 +1234,35 @@ Two constraints for anyone tuning this further:
   because its 8 kHz -> 48 kHz resampler band-limits for free. We emit a real
   160 kHz staircase and need a reconstruction filter MAME does not.
 
+**VERIFIED on hardware by recording (2026-08-01).** A phone capture of the new
+build, matched to MAME's `$2B` reference (the probe confirmed the game issued
+`$2B`), band energies normalised to the 200-500 Hz band:
+
+| band | ours | MAME | deficit |
+|---|---|---|---|
+| 500-1000 | +7.7 | -0.7 | +8.4 |
+| 1000-1500 | -5.4 | -3.6 | -1.7 |
+| 1500-2000 | -10.9 | -9.1 | -1.8 |
+| 2000-3000 | -8.9 | -10.5 | **+1.6** |
+| 3000-4000 | -13.2 | -13.8 | **+0.6** |
+
+1-4 kHz is now within ~2 dB of MAME; under shift 3 the top two bands would
+have been 4-5 dB lower. The +8.4 dB at 500-1000 Hz is chain coloration
+(speaker resonance + phone AGC), not the core — a core defect would trend
+across neighbouring bands, not spike in one.
+
+Pitch re-confirmed at the same time: 190-221 Hz across seven utterances
+against MAME's 186-206 Hz.
+
+**Two traps when judging a phone recording of this:**
+- **Check the BACKGROUND spectrum first.** Room tone here carried energy to
+  20 kHz, which proves the chain is not the thing limiting the speech. Without
+  that control a dull-looking capture says nothing.
+- **Do NOT treat MAME's above-4 kHz content as a target.** MAME has far MORE
+  HF than we do (-14 dB at 6-10 kHz) purely because it applies no
+  reconstruction filter; a real TMS5220 cannot produce anything up there. Only
+  the 0.2-4 kHz bands are meaningful for comparison.
+
 If it still sounds dull, shift 1 x2 is next, but at -16.6 dB image rejection
 the 12 kHz imaging may become audible as edge — which is the "harsh" the
 filter was originally added to fix.
