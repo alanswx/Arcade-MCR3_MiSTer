@@ -1254,6 +1254,48 @@ across neighbouring bands, not spike in one.
 Pitch re-confirmed at the same time: 190-221 Hz across seven utterances
 against MAME's 186-206 Hz.
 
+### THE PHRASE CATALOGUE, and speech CONFIRMED CORRECT (2026-08-01)
+
+All 17 speech commands isolated from MAME by subtraction and measured. Use
+this to identify an unknown capture — duration plus F0 pins a phrase down:
+
+| cmd | dur | F0 | | cmd | dur | F0 | | cmd | dur | F0 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `$28` | 1.76s | 116 | | `$2E` | 1.79s | 118 | | `$34` | 0.81s | 222 |
+| `$29` | 0.61s | 129 | | `$2F` | 0.82s | 118 | | `$35` | 1.65s | 266 |
+| `$2A` | 0.71s | 186 | | `$30` | 2.43s | 182 | | `$36` | 1.82s | 211 |
+| `$2B` | 4.40s | 178 | | `$31` | 2.22s | 129 | | `$37` | 2.11s | 205 |
+| `$2C` | 1.15s | 211 | | `$32` | 0.64s | 157 | | `$38` | 1.11s | 178 |
+| `$2D` | 1.30s | 216 | | `$33` | 2.19s | 186 | | | | |
+
+**`$2A` = "GREETINGS", `$2B` = "MASTER CONTROL..."** — identified from a bench
+recording. They are the pair the game issues back to back at `$0913`/`$0921`,
+i.e. the game-start greeting.
+
+**FINAL VERIFICATION — synthesis is correct.** Bench recording vs MAME, matched
+phrase, speech gated at -20 dB to exclude the room reverb tail:
+
+| phrase | duration ours/MAME | pitch ours/MAME |
+|---|---|---|
+| `$2A` "greetings" | 0.61 / 0.61 s = **1.000** | **0.994** |
+| `$2B` "master control" | 4.42 / 4.40 s = **1.005** | **0.981** (per-frame) |
+
+Rate and pitch both match to within 2%. Combined with the band profile being
+within ~2 dB of MAME from 1-4 kHz, **the speech path is correct** and any
+remaining audible difference is the playback/recording chain.
+
+**Measurement traps this exposed, all of which produced a false alarm first:**
+- **A -33 dB voiced-duration gate counts ROOM REVERB as speech.** It made the
+  "greetings" clip read 1.49 s against MAME's 0.73 s — an apparent 2.04x rate
+  error that vanished at a -20 dB gate (1.000). Gate hard, or measure in an
+  anechoic path.
+- **Median F0 is corrupted by OCTAVE ERRORS.** Medians differed by 9.7% on
+  `$2B`; per-frame comparison showed 0.981 with 10.7% of frames sitting at
+  exactly 2x. Compare contours frame by frame, never medians alone.
+- **A clip may hold MORE THAN ONE phrase.** The first "greetings master
+  control" clip was two utterances plus a gap; measured whole it read 25% long,
+  and per-utterance it read 1.005. Always check the envelope first.
+
 **Two traps when judging a phone recording of this:**
 - **Check the BACKGROUND spectrum first.** Room tone here carried energy to
   20 kHz, which proves the chain is not the thing limiting the speech. Without
