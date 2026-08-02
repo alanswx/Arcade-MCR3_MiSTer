@@ -345,12 +345,25 @@ already installed on the bench machine before relying on them:
 - **path-style names work** (e.g. `atlantis2/boa_1.2c` in Battle of Atlantis)
 - **`<part repeat="N">00</part>` zero-fill works** (widely used)
 
-**Deployed as `MCR3SNT`, deliberately not `MCR3`.** MiSTer resolves an MRA's
-`<rbf>` tag against `_Arcade/cores/<name>_<date>.rbf`, so dropping this build in
-as `MCR3_<newer date>.rbf` would silently have become the core for Tapper,
-Timber, Journey and the upright Discs of Tron too. The work-in-progress speech
-core stays isolated to its own MRA until it is finished:
-`_Arcade/cores/MCR3SNT_20260730.rbf` + `<rbf>mcr3snt</rbf>`.
+**Was deployed as `MCR3SNT`, deliberately not `MCR3` — FOLDED BACK 2026-08-01.**
+MiSTer resolves an MRA's `<rbf>` tag against `_Arcade/cores/<name>_<date>.rbf`,
+so dropping a work-in-progress build in as `MCR3_<newer date>.rbf` would
+silently have become the core for Tapper, Timber, Journey and the upright Discs
+of Tron too. Keeping it under its own name is the right move DURING bring-up.
+
+Now that speech works it ships as `_Arcade/cores/MCR3_20260801.rbf` +
+`<rbf>mcr3</rbf>`, i.e. one core for all five sets, and the `MCR3SNT` rbf is
+deleted. **The gate for folding it back is a regression pass, and it was run:**
+all four other sets launched and rendered correctly on the merged core
+(`tapper`, `timber`, `journey`, `dotron` — screenshots checked for real content,
+not just a boot). Do the same before any future fold.
+
+Two things to keep in mind if you edit that MRA:
+- MiSTer's MRA parser is CUSTOM, not a real XML parser. Do not leave a literal
+  `rbf` tag inside an XML comment — it may be seen as a second entry. The
+  comment in the file deliberately spells the old name in quotes instead.
+- Rollback is simply deleting `MCR3_20260801.rbf`; the upstream
+  `MCR3_20260417.rbf` is still on the card and MiSTer picks the newest.
 
 ### Step 3 — 6802 + PIAs + DAC (TMS5200 still stubbed)
 
@@ -1354,14 +1367,13 @@ Do these in order and stop when it matches:
 
 ### 2. Release hygiene
 
-- **Delete `releases/zzz Discs of Tron (Env, strap=Upright CONTROL).mra`.** It
-  is not a real machine — it exists only as the falsification control for the
-  bring-up probe, and that probe has served its purpose.
-- **Decide the core name.** This ships as `MCR3SNT` deliberately, so a
-  work-in-progress speech core could not become the core for Tapper, Timber,
-  Journey and upright Discs of Tron. Now that it works, folding it back into
-  `MCR3` gives one core for all five sets. That is a release decision, not a
-  technical one.
+- ~~Delete the `zzz ... strap=Upright CONTROL` MRA~~ **DONE 2026-08-01** — it
+  was never a real machine, only the falsification control for the bring-up
+  probe, and that probe has served its purpose. Removed from the repo and the
+  card.
+- ~~Decide the core name~~ **DONE 2026-08-01** — folded back to `<rbf>mcr3</rbf>`
+  / `MCR3_20260801.rbf`, one core for all five sets, gated on a regression pass
+  (all four other sets launch and render). See the naming section above.
 - The bring-up probe (`status[8]`, "S&T Probe") is already default OFF and
   costs nothing; keep it.
 

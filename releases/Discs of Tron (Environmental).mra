@@ -15,12 +15,15 @@
 	<setname>dotrone</setname>
 	<parent>dotron</parent>
 	<mameversion>0218</mameversion>
-	<!-- Deliberately NOT <rbf>mcr3</rbf>. MiSTer matches the rbf tag against
-	     _Arcade/cores/<name>_<date>.rbf, so shipping this work as MCR3_<newer
-	     date>.rbf would silently become the core for Tapper/Timber/Journey and
-	     the upright Discs of Tron as well. A distinct name keeps the
-	     work-in-progress speech core isolated to this MRA until it is done. -->
-	<rbf>mcr3snt</rbf>
+	<!-- This shipped as "mcr3snt" during bring-up. MiSTer matches the rbf name
+	     against _Arcade/cores/NAME_DATE.rbf, so a work-in-progress speech core
+	     published as MCR3 with a newer date would silently have become the core
+	     for Tapper/Timber/Journey and the upright Discs of Tron too. Folded
+	     back to the normal name 2026-08-01, once speech was working and the
+	     other four sets were re-verified on hardware. (No literal tag in this
+	     comment on purpose -- MiSTer's MRA parser is custom, not a real XML
+	     parser, and must not see a second rbf entry here.) -->
+	<rbf>mcr3</rbf>
 	<about>Environmental (sit-down) cabinet. Unlike the upright, this PCB carries
 	a Bally Squawk &amp; Talk speech board (MC6802 + 2x PIA6821 + TMS5200 + AD558).
 	Part names follow the MERGED dotron.zip layout (clone ROMs under a dotrone/
