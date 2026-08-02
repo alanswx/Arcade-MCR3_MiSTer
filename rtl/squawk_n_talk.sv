@@ -835,6 +835,11 @@ always @(posedge clk) begin
 	end
 end
 
+// The JTAG probes are ALTERA-ONLY (In-System Sources and Probes). Guarded so
+// the same file compiles on Gowin for the Tang port, where `altsource_probe`
+// does not exist. Defined by SNT_JTAG_PROBE in Arcade-MCR3.qsf; leaving it
+// undefined simply omits the probes and changes no behaviour.
+`ifdef SNT_JTAG_PROBE
 altsource_probe #(
 	.sld_auto_instance_index ("YES"),
 	.instance_id             ("TRC"),
@@ -849,6 +854,7 @@ altsource_probe #(
 	          trc_v3, trc_t3}),
 	.source ()
 );
+`endif  // SNT_JTAG_PROBE
 
 wire [95:0] snt_probe_word = {
 	8'h5A,              // [95:88] signature, confirms the probe is live
@@ -864,6 +870,7 @@ wire [95:0] snt_probe_word = {
 	{3'h0, cmd_at_read} // [7:0]   command as seen AT THE READ
 };
 
+`ifdef SNT_JTAG_PROBE
 altsource_probe #(
 	.sld_auto_instance_index ("YES"),
 	.instance_id             ("SNT"),
@@ -874,6 +881,7 @@ altsource_probe #(
 	.probe  (snt_probe_word),
 	.source ()
 );
+`endif  // SNT_JTAG_PROBE
 
 assign cpu_run     = { rom_nonzero, ram_seen, &run_cnt };
 assign progress    = { &ws_edges, irq_seen, pia2_read_seen };
