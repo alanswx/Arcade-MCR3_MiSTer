@@ -1205,11 +1205,38 @@ IIRs at shift 3 (~3.2 kHz) strip almost everything above 800 Hz, where MAME —
 which models the board's actual `filter_rc` — keeps content out to ~5.8 kHz.
 That is very likely what "sounds good but not quite the same" is.
 
-Next step: widen the filter (a single pole, or shift 2) and compare band
-energies against the MAME reference rather than by ear. Note the earlier
-"9.0% vs 3.8%" figures are NOT comparable to the numbers above — they were
-computed on a magnitude spectrum against the contaminated recording, whereas
-these use a power spectrum against clean MAME output. Compare like with like.
+Note the earlier "9.0% vs 3.8%" figures are NOT comparable to the numbers
+above — they were computed on a magnitude spectrum against the contaminated
+recording, whereas these use a power spectrum against clean MAME output.
+Compare like with like.
+
+**DONE — filter widened to shift 2 (2026-08-01).** Settled analytically rather
+than by capture, which is the better evidence anyway: composite response
+including the 8 kHz staircase, normalised at 100 Hz —
+
+| design | 1k | 2k | 3k | 4k | 12k (image) |
+|---|---|---|---|---|---|
+| shift 3 x2 (was) | -0.9 | -3.5 | -7.1 | **-11.4** | -35.9 |
+| **shift 2 x2 (now)** | -0.4 | -1.5 | -3.4 | **-6.2** | -24.6 |
+| shift 1 x2 | -0.2 | -1.0 | -2.3 | -4.3 | -16.6 |
+| boxcar 20 | -0.4 | -1.8 | -4.2 | -7.8 | -26.8 |
+
+Shift 3 was discarding the top third of the speech band. Shift 2 recovers
+5.2 dB at 4 kHz and still rejects images by 24.6 dB. Speech re-verified on
+hardware after the change (`cmds=02`, `ws=FF`, `cmd_at_read=1D` = the correct
+high nibble of `$2B`).
+
+Two constraints for anyone tuning this further:
+- **The 8 kHz staircase alone costs 3.9 dB at 4 kHz**, so ~-4.3 dB is the
+  practical floor without ZOH compensation. Do not chase flatness past it.
+- **MAME is not a model for this filter.** It puts only a 15.9 Hz DC blocker
+  on the speech path (`FILTER_RC ... set_ac()` = 10k/1uF, `ballysound.cpp:704`)
+  because its 8 kHz -> 48 kHz resampler band-limits for free. We emit a real
+  160 kHz staircase and need a reconstruction filter MAME does not.
+
+If it still sounds dull, shift 1 x2 is next, but at -16.6 dB image rejection
+the 12 kHz imaging may become audible as edge — which is the "harsh" the
+filter was originally added to fix.
 
 **Capture path:** the MS2109/MiraBox dongle on this host is ALSA `hw:3,0` +
 `/dev/video4`. It only locks to standard CEA modes — MiSTer's `video_mode=1`

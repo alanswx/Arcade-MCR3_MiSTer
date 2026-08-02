@@ -515,9 +515,29 @@ assign tms_status = tms_dq_hold;
 //
 //     wire signed [31:0] scaled = $signed({{11{tms_sum[20]}}, tms_sum}) * 32'sd13;
 //
-// This IIR version measured 9.0% energy above 4 kHz against the real cabinet's
-// 3.8% (same-phrase GREETINGS capture) - imperfect but audibly fine, and the
-// remaining gap is a refinement, not a defect.
+// SHIFT 3 WAS TOO AGGRESSIVE, and the reasoning above that set it is unsound.
+// It rested on a YouTube cabinet recording with game audio mixed in, compared
+// against a phrase that was never matched. Redone analytically (2026-08-01),
+// composite response INCLUDING the 8 kHz staircase, normalised at 100 Hz:
+//
+//   design            1k     2k     3k     4k    12k(image)
+//   shift 3 x2      -0.9   -3.5   -7.1  -11.4   -35.9      <- was here
+//   shift 2 x2      -0.4   -1.5   -3.4   -6.2   -24.6      <- now here
+//   shift 1 x2      -0.2   -1.0   -2.3   -4.3   -16.6
+//   boxcar 20       -0.4   -1.8   -4.2   -7.8   -26.8
+//
+// Shift 3 threw away 11.4 dB at 4 kHz and 7 dB at 3 kHz -- the top third of the
+// speech band, right where the consonants are. That is why it sounded muffled.
+// Shift 2 recovers 5.2 dB at 4 kHz and still rejects the images by 24.6 dB.
+//
+// Two things to know before touching this again:
+//   - the 8 kHz staircase alone costs 3.9 dB at 4 kHz, so -4.3 dB (shift 1 x2)
+//     is about the best achievable without ZOH compensation;
+//   - MAME is NOT a model for this filter. It puts only a 15.9 Hz DC blocker
+//     on the speech path (`FILTER_RC ... set_ac()` = 10k/1uF) because its
+//     8 kHz -> 48 kHz resampler band-limits for free. We emit a real 160 kHz
+//     staircase and genuinely need a reconstruction filter it does not.
+// Evaluate any change with the response table above, not by ear alone.
 reg signed [15:0] tms_lp1 = 0, tms_lp2 = 0;
 always @(posedge clk) begin
 	if (reset) begin
@@ -525,8 +545,8 @@ always @(posedge clk) begin
 		tms_lp2 <= 0;
 	end
 	else if (tms_cen) begin
-		tms_lp1 <= tms_lp1 + ((tms_audio - tms_lp1) >>> 3);
-		tms_lp2 <= tms_lp2 + ((tms_lp1   - tms_lp2) >>> 3);
+		tms_lp1 <= tms_lp1 + ((tms_audio - tms_lp1) >>> 2);
+		tms_lp2 <= tms_lp2 + ((tms_lp1   - tms_lp2) >>> 2);
 	end
 end
 
