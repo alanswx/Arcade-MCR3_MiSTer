@@ -1153,6 +1153,69 @@ Courtesy note: the bench MiSTer is a shared machine and was mid-session on the
 FM-7 core when this was written. Check `/api/games/playing` before launching
 anything.
 
+### FIDELITY MEASURED AGAINST MAME — pitch is RIGHT, the filter is WRONG (2026-08-01)
+
+The earlier fidelity notes compared our output against a YouTube cabinet
+recording. That reference is contaminated (game music and effects are mixed
+into it) and the phrases were never matched, so every conclusion drawn from it
+— including "ours is 25% high in pitch" and "ours carries too much energy above
+4 kHz" — was unsound.
+
+**Use MAME as the reference instead, and isolate the speech by SUBTRACTION.**
+MAME is bit-deterministic, so running the identical session twice — once with a
+speech command injected, once without — and subtracting the two WAVs yields the
+speech with the game audio removed EXACTLY (measured residual before the
+injection point: 0.00). `tools/mame_ref_phrase.lua` + `-wavwrite` does the
+capture, `tools/pitch_compare.py` does the analysis:
+
+```sh
+CMDBYTE=0x2A mame -rp <roms> dotrone -video none -sound none -nothrottle \
+  -seconds_to_run 28 -noplugins -skip_gameinfo -autoboot_delay 1 \
+  -autoboot_script tools/mame_ref_phrase.lua -wavwrite ref.wav
+# then the same run with CMDBYTE=none, and subtract
+```
+
+Reference phrase durations, useful for identifying an unknown capture:
+
+| cmd | duration | F0 |
+|---|---|---|
+| `$2A` | 0.74 s | 186.1 Hz |
+| `$2B` | 3.95 s | 186.0 Hz |
+| `$32` | 0.74 s | 155.3 Hz |
+| `$33` | 2.33 s | 186.0 Hz |
+| `$37` | 2.13 s | 205.6 Hz |
+
+**Result — our hardware capture vs MAME `$2A` (the same phrase, identified by
+duration AND pitch):**
+
+| | ours | MAME |
+|---|---|---|
+| voiced duration | 0.760 s | 0.740 s |
+| F0 median | 184.7 Hz | 186.1 Hz |
+| 95% rolloff | **795 Hz** | **5764 Hz** |
+| energy > 4 kHz | **0.2%** | **6.5%** |
+
+**Pitch ratio 0.993, duration ratio 1.027.** Rate and pitch are CORRECT — the
+160 kHz `tms_cen` is right and needs no further investigation. Do not go
+looking for a clock error; that question is closed.
+
+**The remaining defect is the RECONSTRUCTION FILTER, and it errs the opposite
+way from what was assumed: our speech is far too DULL.** Two cascaded one-pole
+IIRs at shift 3 (~3.2 kHz) strip almost everything above 800 Hz, where MAME —
+which models the board's actual `filter_rc` — keeps content out to ~5.8 kHz.
+That is very likely what "sounds good but not quite the same" is.
+
+Next step: widen the filter (a single pole, or shift 2) and compare band
+energies against the MAME reference rather than by ear. Note the earlier
+"9.0% vs 3.8%" figures are NOT comparable to the numbers above — they were
+computed on a magnitude spectrum against the contaminated recording, whereas
+these use a power spectrum against clean MAME output. Compare like with like.
+
+**Capture path:** the MS2109/MiraBox dongle on this host is ALSA `hw:3,0` +
+`/dev/video4`. It only locks to standard CEA modes — MiSTer's `video_mode=1`
+(1024x768, a VESA mode) gives a black frame and silent audio. `video_mode=0`
+(720p) is the setting to use for capture.
+
 ## REMAINING WORK — Discs of Tron (Environmental)
 
 Speech is DONE and confirmed in-game (2026-08-01). What is left, in the order
