@@ -213,6 +213,7 @@ localparam CONF_STR = {
 	"O6,Audio,Mono,Stereo;",
 	"O7,Flip Screen,Off,On;",
 	"O8,S&T Probe,Off,On;",
+	"O9,Backdrop,Off,On;",
 	"-;",
 	"DIP;",
 	"-;",
@@ -640,6 +641,102 @@ always @(posedge clk_80M) begin
 	ce_pix <= hires ? !div[1:0] : !div;
 end
 
+// Screen flip, hoisted above the backdrop block below which mirrors the
+// backdrop address with it. Declared here rather than beside the other video
+// wires because a use-before-declaration is a duplicate-net error in SV -- and
+// on Gowin it silently becomes an implicit 1-bit wire instead, which is how
+// jt680x's jsr_sel got truncated during the Tang port.
+wire core_flip = status[7];
+
+// ===========================================================================
+// CABINET BACKDROP (status[9], "Backdrop" in the OSD)
+//
+// Discs of Tron -- both the upright and the Environmental -- puts a backlit
+// painted cityscape behind a HALF-SILVERED MIRROR and superimposes the monitor
+// image on it. You see the artwork wherever the tube is black. That is what
+// this reproduces: the backdrop shows through every black game pixel, which is
+// the same hook the S&T probe tint uses below.
+//
+// The artwork is hardbaked into the MRA as rom index 2 (see
+// tools/make_backdrop.py) -- 512x240, one 16-bit little-endian word per pixel
+// carrying 9-bit 3:3:3 colour. Nothing ships alongside the MRA. Multi-megabyte
+// inline MRA payloads are an established MiSTer pattern, not an invention:
+// Cosmic Alien.mra is 3.4 MB of inline hex for its WAV samples.
+//
+// THE FLIP IS THE WHOLE TRICK HERE. video_hflip/video_vflip are inputs to
+// mcr3.vhd and flip its RASTER COUNTERS (rtl/mcr3.vhd:508-511), so the RGB
+// leaving the core is ALREADY flipped -- Discs of Tron runs mirrored because
+// the real cabinet has a mirror. A backdrop composited after the core without
+// the same treatment would sit still while the game mirrored around it.
+// Flipping the backdrop's ADDRESS is equivalent to flipping the image, so the
+// counters below are mirrored with the very same signals the core is given.
+// Screen ROTATION needs nothing: MiSTer rotates downstream of this RGB stream,
+// so anything composited in rotates with the game for free.
+// ===========================================================================
+wire bd_dl = ioctl_download && (ioctl_index == 8'd2);
+
+// Download: the MRA delivers two bytes per pixel, low byte first. Pair them
+// and keep only the 9 bits the video path can actually show.
+reg  [16:0] bd_wr_addr = 0;
+reg   [7:0] bd_lo = 0;
+reg         bd_phase = 0;
+reg         bd_we = 0;
+reg   [8:0] bd_wr_data = 0;
+always @(posedge clk_sys) begin
+	bd_we <= 1'b0;
+	if (!bd_dl) begin
+		bd_phase   <= 1'b0;
+		bd_wr_addr <= 17'd0;
+	end
+	else if (ioctl_wr) begin
+		bd_phase <= ~bd_phase;
+		if (!bd_phase) bd_lo <= ioctl_dout;
+		else begin
+			bd_wr_data <= {ioctl_dout[0], bd_lo};   // 9-bit 3:3:3
+			bd_we      <= 1'b1;
+		end
+	end
+	if (bd_we) bd_wr_addr <= bd_wr_addr + 1'd1;
+end
+
+// 512 x 240 x 9 bits = 1,105,920 bits = 108 M10K. Sized EXACTLY rather than
+// rounded up to a power of two, which would waste ~8 blocks for nothing.
+(* ramstyle = "M10K" *) reg [8:0] bd_ram[0:122879];
+always @(posedge clk_sys) if (bd_we) bd_ram[bd_wr_addr] <= bd_wr_data;
+
+// Active-pixel counters taken from the core's own blanking, so they cannot
+// drift out of step with the picture.
+reg  [9:0] bd_x = 0;
+reg  [9:0] bd_y = 0;
+reg        hb_d = 0, vb_d = 0;
+always @(posedge clk_80M) begin
+	if (ce_pix) begin
+		hb_d <= hblank;
+		vb_d <= vblank;
+		if (hblank) bd_x <= 10'd0;
+		else if (!(&bd_x)) bd_x <= bd_x + 1'd1;
+		if (vblank) bd_y <= 10'd0;
+		else if (hblank && !hb_d && !(&bd_y)) bd_y <= bd_y + 1'd1;  // new line
+	end
+end
+
+// Mirror the ADDRESS with the same signals the core's counters get. In Hi-Res
+// the core runs 480 lines, so mirror on 479 and then halve -- the stored image
+// is 240 lines and each is shown twice.
+wire        bd_hflip = mod_dotron_any ^ core_flip;
+wire        bd_vflip = core_flip;
+wire  [9:0] bd_ax = bd_hflip ? (10'd511 - bd_x) : bd_x;
+wire  [9:0] bd_ay_full = hires ? (bd_vflip ? (10'd479 - bd_y) : bd_y)
+                               : (bd_vflip ? (10'd239 - bd_y) : bd_y);
+wire  [8:0] bd_row = hires ? bd_ay_full[9:1] : bd_ay_full[8:0];
+
+reg [8:0] bd_pix;
+always @(posedge clk_80M) if (ce_pix) bd_pix <= bd_ram[{bd_row, bd_ax[8:0]}];
+
+// Show it only where the game is black -- that is the mirror.
+wire bd_en   = status[9] && mod_dotron_any;
+wire bd_here = bd_en && ~|{r, g, b};
+
 // Squawk & Talk bring-up probe (status[8], "S&T Probe" in the OSD).
 //
 // `snt_seen` is STICKY: set the first time the game issues a non-zero sound
@@ -675,13 +772,19 @@ end
 // Turn it back on from the OSD ("S&T Probe") if a regression needs chasing.
 wire snt_probe = status[8] & mod_dotrone_any;   // default OFF; OSD toggles
 wire snt_black = ~|{r, g, b};
-wire [2:0] probe_r = (snt_probe & snt_black) ? snt_cpu_run : r;
+
+// Backdrop first, probe tint on top of the result: the probe is a debug aid
+// (default off) and must still win when it is switched on.
+wire [2:0] bd_r = bd_here ? bd_pix[8:6] : r;
+wire [2:0] bd_g = bd_here ? bd_pix[5:3] : g;
+wire [2:0] bd_b = bd_here ? bd_pix[2:0] : b;
+wire [2:0] probe_r = (snt_probe & snt_black) ? snt_cpu_run : bd_r;
 // GREEN is a 3-BIT PROGRESS CODE rendered as intensity, not a flag:
 //   1 = 6802 read PIA2   2 = it was interrupted   4 = it drove TMS /WS
 // so 0=nothing, 3=interrupted+servicing, 7=full chain. Distinct green
 // levels (0/36/73/109/146/182/219/255 after 3->8 bit expansion) are easy
 // to read back out of a screenshot.
-wire [2:0] probe_g = (snt_probe & snt_black) ? snt_progress : g;
+wire [2:0] probe_g = (snt_probe & snt_black) ? snt_progress : bd_g;
 // BLUE is a 3-bit code as well now:
 //   bit0 host has strobed OP4 bit 4
 //   bit1 the downloaded RESET vector is exactly $F983 (ROM layout is correct)
@@ -689,7 +792,7 @@ wire [2:0] probe_g = (snt_probe & snt_black) ? snt_progress : g;
 //        mirror mask entirely. If bit2 lights while GREEN bit0 stays dark, my
 //        0xB090 mirror mask is wrong -- that separates "decode bug" from
 //        "the CPU never goes there" in one reading.
-wire [2:0] probe_b = (snt_probe & snt_black) ? {snt_pia_loose, snt_tms_nz, snt_seen} : b;  // bit1 now = TMS produced audio
+wire [2:0] probe_b = (snt_probe & snt_black) ? {snt_pia_loose, snt_tms_nz, snt_seen} : bd_b;  // bit1 now = TMS produced audio
 
 arcade_video #(512,9) arcade_video
 (
@@ -708,7 +811,7 @@ arcade_video #(512,9) arcade_video
 wire no_rotate = status[2] | direct_video | landscape;
 wire rotate_ccw = 0;
 wire flip       = 0;
-wire core_flip  = status[7];
+// core_flip is declared ABOVE, before the backdrop block that needs it.
 
 assign {FB_PAL_CLK, FB_FORCE_BLANK, FB_PAL_ADDR, FB_PAL_DOUT, FB_PAL_WR} = '0;
 ddram ddram (.*, .s_wr(0),.s_din(0),.s_be(0));
