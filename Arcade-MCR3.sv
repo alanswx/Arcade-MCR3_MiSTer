@@ -213,7 +213,7 @@ localparam CONF_STR = {
 	"O6,Audio,Mono,Stereo;",
 	"O7,Flip Screen,Off,On;",
 	"O8,S&T Probe,Off,On;",
-	"O9,Backdrop,Off,On;",
+	"O9,Backdrop,On,Off;",
 	"-;",
 	"DIP;",
 	"-;",
@@ -733,9 +733,45 @@ wire  [8:0] bd_row = hires ? bd_ay_full[9:1] : bd_ay_full[8:0];
 reg [8:0] bd_pix;
 always @(posedge clk_80M) if (ce_pix) bd_pix <= bd_ram[{bd_row, bd_ax[8:0]}];
 
-// Show it only where the game is black -- that is the mirror.
-wire bd_en   = status[9] && mod_dotron_any;
-wire bd_here = bd_en && ~|{r, g, b};
+// ---------------------------------------------------------------------------
+// THE BACKDROP IS BACKLIT, AND THE GAME OWNS THE LAMP.
+//
+// This is not decoration: MAME's artwork element for it is literally named
+// "backlight" (default.lay: <backdrop name="backlight">), and mcr.cpp drives
+// that output from OP4 bit 6 -- the same latch the Squawk & Talk board hangs
+// off. So the cabinet goes dark between games and lights when one starts,
+// which is exactly what a static backdrop gets wrong.
+//
+// From dotron_op4_w (mcr.cpp:565):
+//   bit 6 = FL0 (J1-4)  drives the light fixture directly
+//   bit 7 = FL1 (J1-3)  enables a 555 astable strobe, 8.5714 Hz,
+//                       77.616 ms high / 38.808 ms low
+// and the two are WIRE-OR'd on the flasher control board. Modelled as such
+// here; if bit 7 is never set this degrades to plain bit 6.
+//
+// ONLY the Environmental set drives any of this. MAME installs dotron_op4_w
+// from init_dotrone alone, so on the upright OP4 never moves and gating on it
+// would leave the backdrop permanently dark. The upright therefore stays lit
+// unconditionally -- correct, not a shortcut.
+// ---------------------------------------------------------------------------
+localparam BD_FLASH_HI = 22'd3104640;   // 77.616 ms @ 40 MHz
+localparam BD_FLASH_LO = 22'd1552320;   // 38.808 ms
+reg [21:0] bd_flash_cnt = 0;
+reg        bd_flash = 1'b1;
+always @(posedge clk_sys) begin
+	if (bd_flash_cnt >= (bd_flash ? BD_FLASH_HI : BD_FLASH_LO)) begin
+		bd_flash_cnt <= 22'd0;
+		bd_flash     <= ~bd_flash;
+	end
+	else bd_flash_cnt <= bd_flash_cnt + 1'd1;
+end
+
+wire bd_lit = mod_dotrone_any ? (output_4[6] | (output_4[7] & bd_flash)) : 1'b1;
+
+// Show it only where the game is black -- that is the mirror. Default ON, so
+// status[9] READS as the "Off" position.
+wire bd_en   = ~status[9] && mod_dotron_any;
+wire bd_here = bd_en && bd_lit && ~|{r, g, b};
 
 // Squawk & Talk bring-up probe (status[8], "S&T Probe" in the OSD).
 //
